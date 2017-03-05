@@ -15,47 +15,7 @@ import time
 import urllib
 
 
-class NeuralNet(object):
-
-	def __init__(self):
-		# Load and save the data
-		self.data = loadmat("mnist_all.mat")
-
-	def plotData(self):
-		'''
-		Plots 10 random images of each digit 
-		'''
-		# Keys of data: ['test1', 'test0', 'test3', 'test2', 'test5', 'test4', 'test7', 'test6', 'test9', 'test8', 'train4', 'train5', 'train6',
-		#'train7', 'train0', 'train1', 'train2', 'train3', '__version__', 'train8', 'train9', '__header__', '__globals__']
-		np.random.seed(8008)
-		for i in range(10):
-			# For each digit, choose 10 images
-			plt.figure()
-			num_data = self.data["train{}".format(i)]
-			np.random.shuffle(num_data)
-
-			for j in range(10):
-				#x, y = int(j/2), j%2
-				plt.subplot(5, 2, j+1)
-				#pdb.set_trace()
-				frame = plt.gca()
-				frame.axes.get_xaxis().set_visible(False)
-				frame.axes.get_yaxis().set_visible(False)
-				plt.imshow(num_data[j].reshape((28, 28)), cmap=cm.gray)
-			plt.savefig("{}s_example.png")
-
-
-'''
-#Load the MNIST digit data
-M = loadmat("mnist_all.mat")
-
-pdb.set_trace()
-#Display the 150-th "5" digit from the training set
-plt.imshow(M["train5"][150].reshape((28,28)), cmap=cm.gray)
-plt.show()
-'''
-
-
+############## GIVEN METHODS #################
 def softmax(y):
     '''Return the output of the softmax function for the matrix of output y. y
     is an NxM matrix where N is the number of outputs for a single case, and M
@@ -82,7 +42,46 @@ def deriv_multilayer(W0, b0, W1, b1, x, L0, L1, y, y_):
     cost function w.r.t the parameters of a neural network'''
     dCdL1 =  y - y_
     dCdW1 =  np.dot(L0, dCdL1.T ) 
-    
+
+
+############## UTIL METHODS ###############
+
+
+############## CODE TO RUN THE PARTS #####################
+def part1(data):
+	np.random.seed(8008)
+	for i in range(10):
+		# For each digit, choose 10 images
+		plt.figure()
+		num_data = self.data["train{}".format(i)]
+		np.random.shuffle(num_data)
+
+		for j in range(10):
+			#x, y = int(j/2), j%2
+			plt.subplot(5, 2, j+1)
+			#pdb.set_trace()
+			frame = plt.gca()
+			frame.axes.get_xaxis().set_visible(False)
+			frame.axes.get_yaxis().set_visible(False)
+			plt.imshow(num_data[j].reshape((28, 28)), cmap=cm.gray)
+		plt.savefig("{}s_example.png".format(i))
+
+def part2(data):
+
+
+
+'''
+#Load the MNIST digit data
+M = loadmat("mnist_all.mat")
+
+pdb.set_trace()
+#Display the 150-th "5" digit from the training set
+plt.imshow(M["train5"][150].reshape((28,28)), cmap=cm.gray)
+plt.show()
+'''
+
+
+
 '''
 #Load sample weights for the multilayer neural network
 snapshot = cPickle.load(open("snapshot50.pkl"))
