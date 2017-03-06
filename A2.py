@@ -66,13 +66,12 @@ class NeuralNet(object):
 	@classmethod
 	def random_weights(cls, mean, std, input_size, output_size, x, y, test_x=[], test_y=[]):
 		weights = np.random.normal(mean, std, size=(input_size, output_size))
-		biases = np.random.normal(mean, std, size=(x.shape[0], output_size))
+		biases = np.random.normal(mean, std, size=(output_size, 1))
 		return cls(weights, biases, x, y, test_x=test_x, test_y=test_y)
 	
-	def forward_step(self):
-		out = linear_comb(self.x, self.weights, self.biases)
+	def forward_step(self, x):
+		out = linear_comb(x, self.weights, self.biases)
 		soft = softmax(out)
-		self.p = soft
 		return {'out': out, 'softmax': soft}
 	
 	def finite_diff(self, step=0.000001):
@@ -84,7 +83,7 @@ class NeuralNet(object):
 		b = self.biases
 		w = self.weights
 		# Output of the softmax
-		p = self.forward_step()['softmax']
+		p = self.forward_step(x)['softmax']
 		
 		max_e = 0
 		exact = dfdw(y, p, x)
@@ -98,7 +97,7 @@ class NeuralNet(object):
 				o_plus = linear_comb(x, w_plus, b)
 				p_plus = softmax(o_plus)
 
-				numerical = (cost(y, p_plus) - cost(y, p)) / step
+				numerical = (self.cost(y, p_plus) - self.cost(y, p)) / step
 
 				#pdb.set_trace()
 				rel_e = abs(exact[i][j] - numerical)
@@ -108,15 +107,13 @@ class NeuralNet(object):
 		
 		print("step size: {}, maximum relative error: {}, total error: {}".format(step, max_e, total_err))
 
-	def train(self, alpha=0.001, max_iter=2000, epsilon=0.0000001):
+	def train(self, alpha=0.01, max_iter=2000, epsilon=0.0000001):
 		x = self.x
 		y = self.y
 		test_x = self.test_x
 		test_y = self.test_y
-		curr_b = self.biases
-		curr_w = self.weights
-		prev_b = curr_b - 1
-		prev_w = curr_w - 1
+		b = self.biases
+		w = self.weights
 		i = 0
 
 		training_perf = []
@@ -124,21 +121,16 @@ class NeuralNet(object):
 		training_costs = []
 		testing_costs = []
 
-		while i < max_iter and abs(curr_w - prev_w).max() > epsilon and abs(curr_b - prev_b).max() > epsilon:
-			prev_b, prev_w = np.copy(curr_b), np.copy(curr_w)
-			self.biases = curr_b
-			self.weights = curr_w
+		while i < max_iter:
+			p = self.forward_step(x)['softmax']
 
-			#pdb.set_trace()
-			p = self.forward_step()['softmax']
-			curr_b -= alpha * dfdb(y, p)
-			curr_w -= alpha * dfdw(y, p, x)
+			b -= alpha * self.dfdb(y, p).mean(axis=0)
+			w -= alpha * self.dfdw(y, p, x)
 
-			out = linear_comb(test_x, self.weights, self.biases)
-			test_p = softmax(out) 
+			test_p = self.forward_step(test_x)['softmax']
 
-			train_corr, train_tot = self.evaluate(x, y, p)
-			test_corr, test_tot = self.evaluate(test_x, test_y, test_p)
+			train_corr, train_tot = self.evaluate(x, y)
+			test_corr, test_tot = self.evaluate(test_x, test_y)
 			
 			train_perf = train_corr/train_tot
 			test_perf = test_corr/test_tot
@@ -146,17 +138,37 @@ class NeuralNet(object):
 			training_perf.append(train_perf)
 			testing_perf.append(test_perf)
 
-			training_cost = cost(y, p)
-			testing_cost = cost(test_y, test_p)
+			training_cost = self.cost(y, p)
+			testing_cost = self.cost(test_y, test_p)
 			training_costs.append(training_cost)
 			testing_costs.append(testing_cost)
+
+
+			'''
+			prev_b, prev_w = np.copy(curr_b), np.copy(curr_w)
+			self.biases = curr_b
+			self.weights = curr_w
+
+			#pdb.set_trace()
+			p = self.forward_step(x)['softmax']
+			curr_b -= alpha * dfdb(y, p).mean(axis=0)
+			curr_w -= alpha * dfdw(y, p, x)
+
+			out = linear_comb(test_x, self.weights, self.biases)
+			test_p = softmax(out) 
+
+			
+			'''
 
 			if i % 50 == 0:
 				print("Iteration {}, training acc: {}, testing acc: {}".format(i, train_perf, test_perf))
 				print("training cost: {}, testing cost: {}".format(training_cost, testing_cost))
 			i += 1
 
-		#Graph stuff
+		return training_perf, testing_perf, training_costs, testing_costs
+	
+	def graph_perf(self, training_perf, testing_perf, training_costs, testing_costs):
+	#Graph stuff
 		plt.figure()
 		plt.plot(training_perf, 'r', label="training performance")
 		plt.plot(testing_perf, 'b', label="testing performance")
@@ -172,12 +184,14 @@ class NeuralNet(object):
 		plt.xlabel("Iteration")
 		plt.ylabel("Cost")
 		plt.title("Cost vs Iterations")
-		plt.legend(loc=4)
+		plt.legend()
 		plt.savefig("part4_cost_vs_iter.jpg")
 	
-	def evaluate(self, x, y, p):
+	def evaluate(self, x, y):
 		correct = 0
 		total = x.shape[0]
+
+		p = self.forward_step(x)['softmax']
 
 		for i in range(p.shape[0]):
 			max_index = np.argsort(p[i])[-1]
@@ -191,6 +205,48 @@ class NeuralNet(object):
 			w.shape = (28, 28)
 			mpimg.imsave("weights_GOOD{}.jpg".format(i), w, cmap=plt.cm.coolwarm)
 
+	def cost(self, y, p):
+		# Returns neg log loss of the softmax output of NN
+		return -np.sum(np.multiply(y, np.log(p))) / y.shape[0]
+
+	def dfdw(self, y, p, x):
+		# gradient of cost function wrt the weights
+		return np.dot(self.dodw(x).T, self.dfdo(y, p)) / x.shape[0]
+
+	def dfdb(self, y, p):
+		return self.dfdo(y, p).mean(axis=0).reshape((10, 1))
+	 
+	def dfdo(self, y, p):
+		# gradient of cost wrt outputs
+		return p - y
+
+	def dodw(self, x):
+		# gradient of outputs wrt inputs
+		return x
+
+class NeuralNetLinear(NeuralNet):
+
+	def forward_step(self, x):
+		soft = linear_comb(x, self.weights, self.biases)
+		return {'softmax': soft}
+
+	def cost(self, y, p):
+		return np.sum((p - y) ** 2) /(2*y.shape[0])
+
+	def dfdw(self, y, p, x):
+		# gradient of cost function wrt the weights
+		return np.dot(x.T, self.dfdo(y, p)) / x.shape[0]
+
+	def dfdb(self, y, p):
+		return np.mean(self.dfdo(y, p), axis=0).reshape((10, 1))
+	 
+	def dfdo(self, y, p):
+		# gradient of cost wrt outputs
+		return p - y
+
+	def dodw(self, x):
+		# gradient of outputs wrt inputs
+		return x
 			
 
 ############## UTIL METHODS ###############
@@ -198,7 +254,7 @@ def linear_comb(x, w, b):
 	'''
 	Computes the linear activation function
 	'''
-	return np.dot(x, w) + b
+	return np.dot(x, w) + np.dot(np.ones((x.shape[0], 1)), b.T)
 
 
 def getData(size, test=False, noisy = False):
@@ -228,29 +284,12 @@ def getData(size, test=False, noisy = False):
 		num_data = np.vstack((num_data, temp))
 		labels = np.vstack((labels, labels_temp))
 
+	num_data = num_data/255.
+
 	if noisy:
 		num_data += (np.random.rand(num_data.shape[0], num_data.shape[1]) - 0.5) * 2
 	
-	return num_data/255., labels
-
-def cost(y, p):
-	# Returns neg log loss of the softmax output of NN
-	return -np.sum(np.multiply(y, np.log(p))) / y.shape[0]
-
-def dfdw(y, p, x):
-	# gradient of cost function wrt the weights
-	return np.dot(dodw(x).T, dfdo(y, p)) / x.shape[0]
-
-def dfdb(y, p):
-	return dfdo(y, p)
- 
-def dfdo(y, p):
-	# gradient of cost wrt outputs
-	return p - y
-
-def dodw(x):
-	# gradient of outputs wrt inputs
-	return x
+	return num_data, labels
 
 ############## CODE TO RUN THE PARTS #####################
 def part1():
@@ -283,7 +322,7 @@ def part2():
 	# One image per digit
 	x, y = getData(1)
 	net = NeuralNet.random_weights(0, 0.1, x.shape[1], 10, x, y)
-	res = net.forward_step()
+	res = net.forward_step(x)
 	print(res['softmax'])
 
 def part3():
@@ -299,9 +338,44 @@ def part4():
 	x, y = getData(100)
 	test_x, test_y = getData(100, test=True)
 	net = NeuralNet.random_weights(0, 0.1, x.shape[1], 10, x, y, test_x, test_y)
-	#net.forward_step()
-	net.train()
+	training_perf, testing_perf, training_costs, testing_costs = net.train()
+	net.graph_perf(training_perf, testing_perf, training_costs, testing_costs)
 	net.saveWeights()
+
+def part5():
+	x, y = getData(100, noisy=True)
+	test_x, test_y = getData(100, test=True, noisy=True)
+	net = NeuralNet.random_weights(0, 0.1, x.shape[1], 10, x, y, test_x, test_y)
+	linear = NeuralNetLinear.random_weights(0, 0.1, x.shape[1], 10, x, y, test_x, test_y)
+
+	print("training softmax")
+	train_p, test_p, train_c, test_c = net.train()
+	print("training linear")
+	train_p_l, test_p_l, train_c_l, test_c_l = linear.train()
+
+	plt.figure()
+	plt.plot(train_p, 'r', label="soft train")
+	plt.plot(test_p, 'b', label="soft test")
+	plt.plot(train_p_l, 'g', label="lin train")
+	plt.plot(test_p_l, 'k', label="lin test")
+	plt.xlabel("Iteration")
+	plt.ylabel("Performance")
+	plt.title("Performance vs Iterations with noise")
+	plt.legend(loc=4)
+	plt.savefig("part5_perf_vs_iter.jpg")
+
+	plt.figure()
+	plt.plot(train_c, 'r', label="softmax training cost")
+	plt.plot(test_c, 'b', label="softmax testing cost")
+	plt.plot(train_c_l, 'g', label="linear training cost")
+	plt.plot(test_c_l, 'k', label="linear testing cost")
+	plt.xlabel("Iteration")
+	plt.ylabel("Cost")
+	plt.title("Cost vs Iterations with noise")
+	plt.legend()
+	plt.savefig("part5_cost_vs_iter.jpg")
+
+
 
 
 '''
@@ -345,4 +419,5 @@ if __name__ == '__main__':
 	# part1()
 	# part2()
 	# part3()
-	part4()
+	# part4()
+	part5()
